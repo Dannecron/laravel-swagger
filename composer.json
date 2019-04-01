@@ -1,5 +1,5 @@
 {
-  "name": "Dannecron/laravel-swagger",
+  "name": "dannecron/laravel-swagger",
   "description": "Provided middleware for generating of swagger-documentation file by run testing of RESTful API.",
   "keywords": ["laravel", "swagger", "testing", "auto-documentation", "rest-api"],
   "license": "MIT",

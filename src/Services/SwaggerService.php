@@ -9,25 +9,23 @@
 
 namespace RonasIT\Support\AutoDoc\Services;
 
-use Illuminate\Container\Container;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Minime\Annotations\Interfaces\AnnotationsBagInterface;
 use Minime\Annotations\Reader as AnnotationReader;
 use Minime\Annotations\Parser;
 use Minime\Annotations\Cache\ArrayCache;
-use RonasIT\Support\AutoDoc\Interfaces\DataCollectorInterface;
-use RonasIT\Support\AutoDoc\Traits\AutoDocRequestTrait;
+use RonasIT\Support\AutoDoc\Interfaces\IDataCollector;
 use RonasIT\Support\AutoDoc\Traits\GetDependenciesTrait;
 use RonasIT\Support\AutoDoc\Exceptions\WrongSecurityConfigException;
-use RonasIT\Support\AutoDoc\Exceptions\DataCollectorClassNotFoundException;
 use RonasIT\Support\DataCollectors\LocalDataCollector;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Http\Testing\File;
 
 /**
- * @property DataCollectorInterface $dataCollector
-*/
+ * @property IDataCollector $dataCollector
+ */
 class SwaggerService
 {
     use GetDependenciesTrait;
@@ -36,7 +34,6 @@ class SwaggerService
     protected $dataCollector;
 
     protected $data;
-    protected $container;
     private $uri;
     private $method;
     /**
@@ -46,14 +43,12 @@ class SwaggerService
     private $item;
     private $security;
 
-    public function __construct(Container $container)
+    public function __construct(IDataCollector $dataCollector)
     {
-        $this->setDataCollector();
+        $this->dataCollector = $dataCollector;
 
         if (config('app.env') == 'testing') {
-            $this->container = $container;
-
-            $this->annotationReader = new AnnotationReader(new Parser, new ArrayCache);;
+            $this->annotationReader = new AnnotationReader(new Parser, new ArrayCache);
 
             $this->security = config('auto-doc.security');
 
@@ -67,26 +62,15 @@ class SwaggerService
         }
     }
 
-    protected function setDataCollector() {
-        $dataCollectorClass = config('auto-doc.data_collector');
-
-        if (empty($dataCollectorClass)) {
-            $this->dataCollector = app(LocalDataCollector::class);
-        } elseif (!class_exists($dataCollectorClass)) {
-            throw new DataCollectorClassNotFoundException();
-        } else {
-            $this->dataCollector = app($dataCollectorClass);
-        }
-    }
-
-    protected function generateEmptyData() {
+    protected function generateEmptyData()
+    {
         $data = [
             'swagger' => config('auto-doc.swagger.version'),
             'host' => $this->getAppUrl(),
             'basePath' => config('auto-doc.basePath'),
             'schemes' => config('auto-doc.schemes'),
             'paths' => [],
-            'definitions' => config('auto-doc.definitions')
+            'definitions' => config('auto-doc.definitions'),
         ];
 
         $info = $this->prepareInfo(config('auto-doc.info'));
@@ -104,13 +88,15 @@ class SwaggerService
         return $data;
     }
 
-    protected function getAppUrl() {
+    protected function getAppUrl()
+    {
         $url = config('app.url');
 
         return str_replace(['http://', 'https://', '/'], '', $url);
     }
 
-    protected function generateSecurityDefinition() {
+    protected function generateSecurityDefinition()
+    {
         $availableTypes = ['jwt', 'laravel'];
         $security = $this->security;
 
@@ -123,29 +109,31 @@ class SwaggerService
         }
 
         return [
-            $security => $this->generateSecurityDefinitionObject($security)
+            $security => $this->generateSecurityDefinitionObject($security),
         ];
     }
 
-    protected function generateSecurityDefinitionObject($type) {
+    protected function generateSecurityDefinitionObject($type)
+    {
         switch ($type) {
             case 'jwt':
                 return [
                     'type' => 'apiKey',
                     'name' => 'authorization',
-                    'in' => 'header'
+                    'in' => 'header',
                 ];
 
             case 'laravel':
                 return [
                     'type' => 'apiKey',
                     'name' => 'Cookie',
-                    'in' => 'header'
+                    'in' => 'header',
                 ];
         }
     }
 
-    public function addData(Request $request, $response) {
+    public function addData(Request $request, $response)
+    {
         $this->request = $request;
 
         $this->prepareItem();
@@ -156,11 +144,12 @@ class SwaggerService
         $this->dataCollector->saveTmpData($this->data);
     }
 
-    protected function prepareItem() {
+    protected function prepareItem()
+    {
         $this->uri = "/{$this->getUri()}";
         $this->method = strtolower($this->request->getMethod());
 
-        if (empty(array_get($this->data, "paths.{$this->uri}.{$this->method}"))) {
+        if (empty(Arr::get($this->data, "paths.{$this->uri}.{$this->method}"))) {
             $this->data['paths'][$this->uri][$this->method] = [
                 'tags' => [],
                 'consumes' => [],
@@ -168,14 +157,15 @@ class SwaggerService
                 'parameters' => $this->getPathParams(),
                 'responses' => [],
                 'security' => [],
-                'description' => ''
+                'description' => '',
             ];
         }
 
         $this->item = &$this->data['paths'][$this->uri][$this->method];
     }
 
-    protected function getUri() {
+    protected function getUri()
+    {
         $uri = $this->request->route()->uri();
         $basePath = preg_replace("/^\//", '', config('auto-doc.basePath'));
         $preparedUri = preg_replace("/^{$basePath}/", '', $uri);
@@ -183,12 +173,13 @@ class SwaggerService
         return preg_replace("/^\//", '', $preparedUri);
     }
 
-    protected function getPathParams() {
+    protected function getPathParams()
+    {
         $params = [];
 
         preg_match_all('/{.*?}/', $this->uri, $params);
 
-        $params = array_collapse($params);
+        $params = Arr::collapse($params);
 
         $result = [];
 
@@ -200,14 +191,15 @@ class SwaggerService
                 'name' => $key,
                 'description' => '',
                 'required' => true,
-                'type' => 'string'
+                'type' => 'string',
             ];
         }
 
         return $result;
     }
 
-    protected function parseRequest($request) {
+    protected function parseRequest($request)
+    {
         $this->saveConsume();
         $this->saveTags();
         $this->saveSecurity();
@@ -226,7 +218,8 @@ class SwaggerService
         $this->saveDescription($concreteRequest, $annotations);
     }
 
-    protected function parseResponse($response) {
+    protected function parseResponse($response)
+    {
         $produceList = $this->data['paths'][$this->uri][$this->method]['produces'];
 
         $produce = $response->headers->get('Content-type');
@@ -250,11 +243,12 @@ class SwaggerService
         }
     }
 
-    protected function saveExample($code, $content, $produce) {
+    protected function saveExample($code, $content, $produce)
+    {
         $description = $this->getResponseDescription($code);
         $availableContentTypes = [
             'application',
-            'text'
+            'text',
         ];
         $explodedContentType = explode('/', $produce);
 
@@ -268,7 +262,7 @@ class SwaggerService
     protected function makeResponseExample($content, $mimeType, $description = '')
     {
         $responseExample = [
-            'description' => $description
+            'description' => $description,
         ];
 
         if ($mimeType === 'application/json') {
@@ -282,7 +276,8 @@ class SwaggerService
         return $responseExample;
     }
 
-    protected function saveParameters($request, AnnotationsBagInterface $annotations) {
+    protected function saveParameters($request, AnnotationsBagInterface $annotations)
+    {
         $rules = (new $request)->rules();
         $actionName = $this->getActionName($this->uri);
 
@@ -293,22 +288,26 @@ class SwaggerService
         }
     }
 
-    protected function saveGetRequestParameters($rules, AnnotationsBagInterface $annotations) {
+    protected function saveGetRequestParameters($rules, AnnotationsBagInterface $annotations)
+    {
         foreach ($rules as $parameter => $rule) {
             $validation = explode('|', $rule);
 
             $description = $annotations->get($parameter, implode(', ', $validation));
 
-            $existedParameter = array_first($this->item['parameters'], function ($existedParameter, $key) use ($parameter) {
-                return $existedParameter['name'] == $parameter;
-            });
+            $existedParameter = Arr::first(
+                $this->item['parameters'],
+                function ($existedParameter, $key) use ($parameter) {
+                    return $existedParameter['name'] == $parameter;
+                }
+            );
 
             if (empty($existedParameter)) {
                 $parameterDefinition = [
                     'in' => 'query',
                     'name' => $parameter,
                     'description' => $description,
-                    'type' => $this->getParameterType($validation)
+                    'type' => $this->getParameterType($validation),
                 ];
                 if (in_array('required', $validation)) {
                     $parameterDefinition['required'] = true;
@@ -319,7 +318,8 @@ class SwaggerService
         }
     }
 
-    protected function savePostRequestParameters($actionName, $rules, AnnotationsBagInterface $annotations) {
+    protected function savePostRequestParameters($actionName, $rules, AnnotationsBagInterface $annotations)
+    {
         if ($this->requestHasMoreProperties($actionName)) {
             if ($this->requestHasBody()) {
                 $this->item['parameters'][] = [
@@ -328,8 +328,8 @@ class SwaggerService
                     'description' => '',
                     'required' => true,
                     'schema' => [
-                        "\$ref" => "#/definitions/{$actionName}Object"
-                    ]
+                        "\$ref" => "#/definitions/{$actionName}Object",
+                    ],
                 ];
             }
 
@@ -337,10 +337,11 @@ class SwaggerService
         }
     }
 
-    protected function saveDefinitions($objectName, $rules, $annotations) {
+    protected function saveDefinitions($objectName, $rules, $annotations)
+    {
         $data = [
             'type' => 'object',
-            'properties' => []
+            'properties' => [],
         ];
         foreach ($rules as $parameter => $rule) {
             $rulesArray = explode('|', $rule);
@@ -357,7 +358,8 @@ class SwaggerService
         $this->data['definitions'][$objectName . 'Object'] = $data;
     }
 
-    protected function getParameterType(array $validation) {
+    protected function getParameterType(array $validation)
+    {
         $validationRules = [
             'array' => 'object',
             'boolean' => 'boolean',
@@ -366,7 +368,7 @@ class SwaggerService
             'email' => 'string',
             'integer' => 'integer',
             'numeric' => 'double',
-            'string' => 'string'
+            'string' => 'string',
         ];
 
         $parameterType = 'string';
@@ -381,18 +383,21 @@ class SwaggerService
         return $parameterType;
     }
 
-    protected function saveParameterType(&$data, $parameter, $parameterType) {
+    protected function saveParameterType(&$data, $parameter, $parameterType)
+    {
         $data['properties'][$parameter] = [
             'type' => $parameterType,
         ];
     }
 
-    protected function saveParameterDescription(&$data, $parameter, array $rulesArray, AnnotationsBagInterface $annotations) {
+    protected function saveParameterDescription(&$data, $parameter, array $rulesArray, AnnotationsBagInterface $annotations)
+    {
         $description = $annotations->get($parameter, implode(', ', $rulesArray));
         $data['properties'][$parameter]['description'] = $description;
     }
 
-    protected function requestHasMoreProperties($actionName) {
+    protected function requestHasMoreProperties($actionName)
+    {
         $requestParametersCount = count($this->request->all());
 
         if (isset($this->data['definitions'][$actionName . 'Object']['properties'])) {
@@ -404,17 +409,19 @@ class SwaggerService
         return $requestParametersCount > $objectParametersCount;
     }
 
-    protected function requestHasBody() {
+    protected function requestHasBody()
+    {
         $parameters = $this->data['paths'][$this->uri][$this->method]['parameters'];
 
-        $bodyParamExisted = array_where($parameters, function($value, $key) {
+        $bodyParamExisted = Arr::where($parameters, function ($value, $key) {
             return $value['name'] == 'body';
         });
 
         return empty($bodyParamExisted);
     }
 
-    public function getConcreteRequest() {
+    public function getConcreteRequest()
+    {
         $controller = $this->request->route()->getActionName();
 
         if ($controller == 'Closure') {
@@ -429,16 +436,15 @@ class SwaggerService
         $instance = app($class);
         $route = $this->request->route();
 
-        $parameters = $this->resolveClassMethodDependencies(
-            $route->parametersWithoutNulls(), $instance, $method
-        );
+        $parameters = $this->resolveClassMethodDependencies($route->parametersWithoutNulls(), $instance, $method);
 
-        return array_first($parameters, function ($key, $parameter) {
+        return Arr::first($parameters, function ($key, $parameter) {
             return preg_match('/Request/', $key);
         });
     }
 
-    public function saveConsume() {
+    public function saveConsume()
+    {
         $consumeList = $this->data['paths'][$this->uri][$this->method]['consumes'];
         $consume = $this->request->header('Content-Type');
 
@@ -447,17 +453,19 @@ class SwaggerService
         }
     }
 
-    public function saveTags() {
+    public function saveTags()
+    {
         $tagIndex = 1;
 
         $explodedUri = explode('/', $this->uri);
 
-        $tag = array_get($explodedUri, $tagIndex);
+        $tag = Arr::get($explodedUri, $tagIndex);
 
         $this->item['tags'] = [$tag];
     }
 
-    public function saveDescription($request, AnnotationsBagInterface $annotations) {
+    public function saveDescription($request, AnnotationsBagInterface $annotations)
+    {
         $this->item['summary'] = $this->getSummary($request, $annotations);
 
         $description = $annotations->get('description');
@@ -467,22 +475,25 @@ class SwaggerService
         }
     }
 
-    protected function saveSecurity() {
+    protected function saveSecurity()
+    {
         if ($this->requestSupportAuth()) {
             $this->addSecurityToOperation();
         }
     }
 
-    protected function addSecurityToOperation() {
+    protected function addSecurityToOperation()
+    {
         $security = &$this->data['paths'][$this->uri][$this->method]['security'];
         if (empty($security)) {
             $security[] = [
-                "{$this->security}" => []
+                "{$this->security}" => [],
             ];
         }
     }
 
-    protected function getSummary($request, AnnotationsBagInterface $annotations) {
+    protected function getSummary($request, AnnotationsBagInterface $annotations)
+    {
         $summary = $annotations->get('summary');
 
         if (empty($summary)) {
@@ -492,21 +503,22 @@ class SwaggerService
         return $summary;
     }
 
-    protected function requestSupportAuth() {
+    protected function requestSupportAuth()
+    {
         switch ($this->security) {
-            case 'jwt' :
+            case 'jwt':
                 $header = $this->request->header('authorization');
                 break;
-            case 'laravel' :
+            case 'laravel':
                 $header = $this->request->cookie('__ym_uid');
                 break;
         }
 
         return !empty($header);
-
     }
 
-    protected function parseRequestName($request) {
+    protected function parseRequestName($request)
+    {
         $explodedRequest = explode('\\', $request);
         $requestName = array_pop($explodedRequest);
 
@@ -515,58 +527,56 @@ class SwaggerService
         return preg_replace('/[_]/', ' ', $underscoreRequestName);
     }
 
-    protected function getResponseDescription($code) {
+    protected function getResponseDescription($code)
+    {
         $request = $this->getConcreteRequest();
 
-        return elseChain(
-            function() use ($request, $code) {
-                return empty($request) ? Response::$statusTexts[$code] : null;
-            },
-            function() use ($request, $code) {
-                return $this->annotationReader->getClassAnnotations($request)->get("_{$code}");
-            },
-            function() use ($code) {
-                return config("auto-doc.defaults.code-descriptions.{$code}");
-            },
-            function() use ($code) {
-                return Response::$statusTexts[$code];
-            }
-        );
+        return (empty($request) ? Response::$statusTexts[$code] : null)
+            ?? ($this->annotationReader->getClassAnnotations($request)->get("_{$code}"))
+            ?? (config("auto-doc.defaults.code-descriptions.{$code}"))
+            ?? Response::$statusTexts[$code];
     }
 
-    protected function getActionName($uri) {
-        $action = preg_replace('[\/]','',$uri);
+    protected function getActionName($uri)
+    {
+        $action = preg_replace('[\/]', '', $uri);
 
         return Str::camel($action);
     }
 
-    protected function saveTempData() {
+    protected function saveTempData()
+    {
         $exportFile = config('auto-doc.files.temporary');
         $data = json_encode($this->data);
 
         file_put_contents($exportFile, $data);
     }
 
-    public function saveProductionData() {
+    public function saveProductionData()
+    {
         $this->dataCollector->saveData();
     }
 
-    public function getDocFileContent() {
+    public function getDocFileContent()
+    {
         $data = $this->dataCollector->getDocumentation();
 
         return $data;
     }
 
-    private function camelCaseToUnderScore($input) {
+    private function camelCaseToUnderScore($input)
+    {
         preg_match_all('!([A-Z][A-Z0-9]*(?=$|[A-Z][a-z0-9])|[A-Za-z][a-z0-9]+)!', $input, $matches);
         $ret = $matches[0];
         foreach ($ret as &$match) {
             $match = $match == strtoupper($match) ? strtolower($match) : lcfirst($match);
         }
+
         return implode('_', $ret);
     }
 
-    protected function generateExample($properties) {
+    protected function generateExample($properties)
+    {
         $parameters = $this->replaceObjectValues($this->request->all());
         $example = [];
 
@@ -575,22 +585,23 @@ class SwaggerService
         return $example;
     }
 
-    protected function replaceObjectValues($parameters) {
+    protected function replaceObjectValues($parameters)
+    {
         $classNamesValues = [
             File::class => '[uploaded_file]',
         ];
 
-        $parameters = array_dot($parameters);
+        $parameters = Arr::dot($parameters);
         $returnParameters = [];
 
         foreach ($parameters as $parameter => $value) {
             if (is_object($value)) {
                 $class = get_class($value);
 
-                $value = array_get($classNamesValues, $class, $class);
+                $value = Arr::get($classNamesValues, $class, $class);
             }
 
-            array_set($returnParameters, $parameter, $value);
+            Arr::set($returnParameters, $parameter, $value);
         }
 
         return $returnParameters;
@@ -602,7 +613,8 @@ class SwaggerService
      * We hope swagger developers will resolve this problem in next release of Swagger OpenAPI
      * */
 
-    private function replaceNullValues($parameters, $types, &$example) {
+    private function replaceNullValues($parameters, $types, &$example)
+    {
         foreach ($parameters as $parameter => $value) {
             if (is_null($value) && in_array($parameter, $types)) {
                 $example[$parameter] = $this->getDefaultValueByType($types[$parameter]['type']);
@@ -614,14 +626,15 @@ class SwaggerService
         }
     }
 
-    private function getDefaultValueByType($type) {
+    private function getDefaultValueByType($type)
+    {
         $values = [
             'object' => 'null',
             'boolean' => false,
             'date' => "0000-00-00",
             'integer' => 0,
             'string' => '',
-            'double' => 0
+            'double' => 0,
         ];
 
         return $values[$type];
@@ -651,12 +664,12 @@ class SwaggerService
 
     protected function throwTraitMissingException()
     {
-        $message = "ERROR:\n".
+        $message = "ERROR:\n" .
             "It looks like you did not add AutoDocRequestTrait to your requester. \n" .
             "Please add it or mark in the test that you do not want to collect the \n" .
             "documentation for this case using the skipDocumentationCollecting() method\n";
 
-        fwrite(STDERR, print_r($message, TRUE));
+        fwrite(STDERR, print_r($message, true));
 
         die;
     }

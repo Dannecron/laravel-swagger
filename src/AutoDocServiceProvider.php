@@ -1,19 +1,20 @@
 <?php
 
-/**
- * Created by PhpStorm.
- * User: roman
- * Date: 26.08.16
- * Time: 11:49
- */
-
 namespace RonasIT\Support\AutoDoc;
 
 use Illuminate\Support\ServiceProvider;
 
+use RonasIT\Support\AutoDoc\Interfaces\IContext;
+use RonasIT\Support\AutoDoc\Interfaces\IDataCollector;
+
+/**
+ * Class AutoDocServiceProvider
+ * @package RonasIT\Support\AutoDoc
+ */
 class AutoDocServiceProvider extends ServiceProvider
 {
-    public function boot() {
+    public function boot()
+    {
         $this->publishes([
             __DIR__.'/../config/auto-doc.php' => config_path('auto-doc.php'),
         ], 'config');
@@ -31,6 +32,10 @@ class AutoDocServiceProvider extends ServiceProvider
 
     public function register()
     {
+        $this->app->singleton(IDataCollector::class, function () {
+            $class = config('auto-doc.context', DataCollector::class);
 
+            return new $class();
+        });
     }
 }

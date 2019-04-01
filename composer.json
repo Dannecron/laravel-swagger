@@ -18,9 +18,9 @@
     }
   ],
   "require": {
-    "php": ">=7.0",
+    "php": ">=7.1",
     "laravel/framework": ">=5.3.0",
-    "minime/annotations": "~3.0.0"
+    "minime/annotations": ">=3.0.0 <3.2"
   },
   "autoload": {
     "psr-4": {
